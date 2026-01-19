@@ -1,0 +1,184 @@
+package cliente;
+
+import javax.swing.*;
+import javax.swing.border.EmptyBorder;
+import java.awt.*;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
+import java.io.*;
+import java.net.Socket;
+
+public class ClienteChatSwing extends JFrame {
+
+    // Red
+    private Socket socket;
+    private BufferedReader entrada;
+    private PrintWriter salida;
+    private String nombreUser;
+    private String salaActual = "#chathispano"; // Sala por defecto
+    private boolean conectado = false;
+
+    // GUI
+    private JTextArea areaChat;
+    private JTextField campoMensaje;
+    private JList<String> listaUsuarios;
+    private DefaultListModel<String> modeloUsuarios;
+    private JLabel labelTituloSala;
+
+    public ClienteChatSwing() {
+        nombreUser = JOptionPane.showInputDialog(this, "Introduce tu Nick:", "Entrada", JOptionPane.QUESTION_MESSAGE);
+        if (nombreUser == null || nombreUser.trim().isEmpty()) nombreUser = "Invitado" + (int)(Math.random()*100);
+
+        setTitle("IRC-Hispano - " + nombreUser);
+        setSize(1000, 600);
+        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        setLayout(new BorderLayout());
+
+        construirInterfaz();
+
+        // Conectar inicialmente a la sala por defecto
+        conectarSala(salaActual);
+
+        setVisible(true);
+    }
+
+    private void construirInterfaz() {
+        // --- PANEL IZQUIERDO (SALAS) ---
+        DefaultListModel<String> modeloSalas = new DefaultListModel<>();
+        modeloSalas.addElement("#chathispano");
+        modeloSalas.addElement("#irc-hispano");
+        modeloSalas.addElement("#sevilla");
+        modeloSalas.addElement("#amistad");
+        modeloSalas.addElement("#programacion");
+
+        JList<String> listaSalas = new JList<>(modeloSalas);
+        listaSalas.setBackground(new Color(230, 240, 255));
+        listaSalas.setFixedCellHeight(30);
+
+        // **EVENTO CLAVE**: Al hacer clic en una sala
+        listaSalas.addMouseListener(new MouseAdapter() {
+            public void mouseClicked(MouseEvent evt) {
+                String salaSeleccionada = listaSalas.getSelectedValue();
+                if (salaSeleccionada != null && !salaSeleccionada.equals(salaActual)) {
+                    // Cambiar de sala
+                    cambiarDeSala(salaSeleccionada);
+                }
+            }
+        });
+
+        JPanel panelIzq = new JPanel(new BorderLayout());
+        panelIzq.setBackground(new Color(50, 80, 160));
+        panelIzq.setPreferredSize(new Dimension(180, 0));
+        JLabel tituloSalas = new JLabel(" CANALES", SwingConstants.CENTER);
+        tituloSalas.setForeground(Color.WHITE);
+        panelIzq.add(tituloSalas, BorderLayout.NORTH);
+        panelIzq.add(new JScrollPane(listaSalas), BorderLayout.CENTER);
+
+        // --- PANEL CENTRAL ---
+        areaChat = new JTextArea();
+        areaChat.setEditable(false);
+        labelTituloSala = new JLabel("Sala: " + salaActual);
+        labelTituloSala.setFont(new Font("Arial", Font.BOLD, 16));
+        labelTituloSala.setBorder(new EmptyBorder(5,5,5,5));
+
+        campoMensaje = new JTextField();
+        JButton btnEnviar = new JButton("Enviar");
+        JPanel panelInferior = new JPanel(new BorderLayout());
+        panelInferior.add(campoMensaje, BorderLayout.CENTER);
+        panelInferior.add(btnEnviar, BorderLayout.EAST);
+
+        JPanel panelCentral = new JPanel(new BorderLayout());
+        panelCentral.add(labelTituloSala, BorderLayout.NORTH);
+        panelCentral.add(new JScrollPane(areaChat), BorderLayout.CENTER);
+        panelCentral.add(panelInferior, BorderLayout.SOUTH);
+
+        // --- PANEL DERECHO (USUARIOS) ---
+        modeloUsuarios = new DefaultListModel<>();
+        listaUsuarios = new JList<>(modeloUsuarios);
+        JPanel panelDer = new JPanel(new BorderLayout());
+        panelDer.setPreferredSize(new Dimension(150, 0));
+        panelDer.add(new JLabel("Usuarios", SwingConstants.CENTER), BorderLayout.NORTH);
+        panelDer.add(new JScrollPane(listaUsuarios), BorderLayout.CENTER);
+
+        add(panelIzq, BorderLayout.WEST);
+        add(panelCentral, BorderLayout.CENTER);
+        add(panelDer, BorderLayout.EAST);
+
+        // Listeners Enviar
+        btnEnviar.addActionListener(e -> enviarMensaje());
+        campoMensaje.addActionListener(e -> enviarMensaje());
+    }
+
+    // --- LÓGICA DE CONEXIÓN Y CAMBIO DE SALA ---
+
+    private void cambiarDeSala(String nuevaSala) {
+        // 1. Desconectar de la actual
+        try {
+            if (salida != null) salida.println("*****"); // Avisar al server
+            conectado = false;
+            if (socket != null) socket.close();
+        } catch (Exception e) {}
+
+        // 2. Limpiar pantalla
+        areaChat.setText("");
+        modeloUsuarios.clear();
+
+        // 3. Conectar a la nueva
+        salaActual = nuevaSala;
+        labelTituloSala.setText("Conectando a " + salaActual + "...");
+        conectarSala(salaActual);
+    }
+
+    private void conectarSala(String sala) {
+        new Thread(() -> {
+            try {
+                socket = new Socket("localhost", 5000);
+                entrada = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+                salida = new PrintWriter(socket.getOutputStream(), true);
+
+                // PROTOCOLO: 1. Nombre, 2. Sala
+                salida.println(nombreUser);
+                salida.println(sala);
+
+                conectado = true;
+                SwingUtilities.invokeLater(() -> labelTituloSala.setText("Sala: " + sala));
+
+                String texto;
+                while (conectado && (texto = entrada.readLine()) != null) {
+                    String finalTexto = texto;
+                    SwingUtilities.invokeLater(() -> procesarMensaje(finalTexto));
+                }
+            } catch (IOException e) {
+                SwingUtilities.invokeLater(() -> areaChat.append("\n[ERROR] No se pudo conectar al servidor.\n"));
+            }
+        }).start();
+    }
+
+    private void procesarMensaje(String texto) {
+        areaChat.append(texto + "\n");
+        // Scroll abajo automático
+        areaChat.setCaretPosition(areaChat.getDocument().getLength());
+
+        // Detectar entradas/salidas para la lista de usuarios
+        if (texto.contains("ha entrado en")) {
+            // Lógica simple para extraer nombre (mejora esto con parsing real si quieres)
+            String[] partes = texto.split(" ");
+            // "> Pepe ha entrado..." -> partes[1] es Pepe
+            if (partes.length > 1 && !modeloUsuarios.contains(partes[1])) {
+                modeloUsuarios.addElement(partes[1]);
+            }
+        }
+    }
+
+    private void enviarMensaje() {
+        if (campoMensaje.getText().isEmpty()) return;
+        if (salida != null) {
+            salida.println(campoMensaje.getText());
+            campoMensaje.setText("");
+        }
+    }
+
+    public static void main(String[] args) {
+        SwingUtilities.invokeLater(ClienteChatSwing::new);
+    }
+}
