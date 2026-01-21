@@ -29,6 +29,12 @@ public class HiloServidorChat extends Thread {
             nombreCliente = entrada.readLine();
             nombreSala = entrada.readLine();
 
+            //Verificación de seguridad por si envían null
+            if (nombreCliente == null || nombreSala == null) {
+                socket.close();
+                return;
+            }
+
             //Buscar la sala
             if (ServidorChat.mapaSalas.containsKey(nombreSala)) {
                 this.infoSala = ServidorChat.mapaSalas.get(nombreSala);
@@ -44,6 +50,8 @@ public class HiloServidorChat extends Thread {
                     infoSala.addSocket(socket, infoSala.getConexiones());
                     infoSala.setConexiones(infoSala.getConexiones() + 1);
                     infoSala.setActuales(infoSala.getActuales() + 1);
+                    //Guarda quien es este socket
+                    ServidorChat.nombresUsuarios.put(socket, nombreCliente);
                 } else {
                     salida.println("Sala llena");
                     socket.close();
@@ -57,6 +65,20 @@ public class HiloServidorChat extends Thread {
 
             //Enviar historial previo de esa sala al nuevo usuario
             salida.println(infoSala.getMensajes());
+
+            // --- CORRECCIÓN 2: DECIRLE AL NUEVO QUIÉNES ESTÁN YA ---
+            // Recorremos los sockets de la sala actual
+            Socket[] socketsEnSala = infoSala.getTabla();
+            for (Socket s : socketsEnSala) {
+                if (s != null && !s.isClosed() && s != socket) {
+                    // Recuperamos el nombre del mapa global
+                    String nombreOtro = ServidorChat.nombresUsuarios.get(s);
+                    if (nombreOtro != null) {
+                        // Le decimos a tu cliente: "Oye, añade a esta persona a tu lista"
+                        salida.println("###PARSER-ENTRA###" + nombreOtro);
+                    }
+                }
+            }
 
             //Bucle de mensajes
             String texto;
@@ -75,11 +97,19 @@ public class HiloServidorChat extends Thread {
             //Salida
             if (infoSala != null) {
                 enviarMensajesASala("> " + nombreCliente + " ha salido de " + nombreSala);
+                enviarMensajesASala("###PARSER-SALE###" + nombreCliente);
                 synchronized (infoSala) {
                     infoSala.setActuales(infoSala.getActuales() - 1);
                 }
             }
-            try { socket.close(); } catch (IOException e) {}
+
+            // Importante: Borrar del mapa para liberar memoria
+            ServidorChat.nombresUsuarios.remove(socket);
+
+            try {
+                socket.close();
+            } catch (IOException e)
+            {}
         }
     }
 

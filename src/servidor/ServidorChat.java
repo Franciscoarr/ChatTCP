@@ -4,11 +4,14 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class ServidorChat {
 
     //Mapa: Nombre de la sala -> Objeto InfoHilos de esa sala
     public static Map<String, InfoHilos> mapaSalas = new HashMap<>();
+    //Usamos ConcurrentHashMap para evitar errores cuando varios entran a la vez
+    public static Map<Socket, String> nombresUsuarios = new ConcurrentHashMap<>();
     static final int MAX_POR_SALA = 10;
 
     public static void main(String[] args) {

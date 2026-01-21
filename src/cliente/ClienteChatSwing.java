@@ -168,6 +168,27 @@ public class ClienteChatSwing extends JFrame {
                 modeloUsuarios.addElement(partes[1]);
             }
         }
+
+        //Detector de comandos
+        if (texto.startsWith("###PARSER-ENTRA###")) {
+            //Cortamos la etiqueta para quedarnos solo con el nombre
+            String nombreNuevo = texto.substring("###PARSER-ENTRA###".length()).trim();
+
+            //Si no lo tenemos ya, lo añadimos al modelo visual
+            if (!modeloUsuarios.contains(nombreNuevo) && !nombreNuevo.isEmpty()) {
+                modeloUsuarios.addElement(nombreNuevo);
+            }
+            return; //Hacemos return para que no se escriba en el chat de texto
+        }
+
+        if (texto.startsWith("###PARSER-SALE###")) {
+            String nombreSale = texto.substring("###PARSER-SALE###".length()).trim();
+            modeloUsuarios.removeElement(nombreSale);
+            return;
+        }
+
+        areaChat.append(texto + "\n");
+        areaChat.setCaretPosition(areaChat.getDocument().getLength());
     }
 
     private void enviarMensaje() {
