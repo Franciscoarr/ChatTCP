@@ -7,14 +7,14 @@ import java.util.Map;
 
 public class ServidorChat {
 
-    // Mapa: Nombre de la sala -> Objeto InfoHilos de esa sala
+    //Mapa: Nombre de la sala -> Objeto InfoHilos de esa sala
     public static Map<String, InfoHilos> mapaSalas = new HashMap<>();
     static final int MAX_POR_SALA = 10;
 
     public static void main(String[] args) {
         int puerto = 5000;
 
-        // 1. Inicializamos las salas disponibles (Crea una "Pizarra" InfoHilos para cada una)
+        //Inicializamos las salas
         mapaSalas.put("#chathispano", new InfoHilos(MAX_POR_SALA));
         mapaSalas.put("#irc-hispano", new InfoHilos(MAX_POR_SALA));
         mapaSalas.put("#sevilla", new InfoHilos(MAX_POR_SALA));
@@ -25,11 +25,11 @@ public class ServidorChat {
 
         try (ServerSocket servidor = new ServerSocket(puerto)) {
             while (true) {
-                // Aceptamos la conexión genérica
+                //Aceptamos la conexión genérica
                 Socket cliente = servidor.accept();
 
-                // Lanzamos el hilo. El hilo se encargará de preguntar A QUÉ SALA va.
-                // Nota: Ya no pasamos 'infoh' aquí, porque no sabemos a qué sala quiere ir todavía.
+                //Lanzamos el hilo. El hilo se encargará de preguntar a que sala va
+                //Nota: Ya no pasamos 'infoh' aquí, porque no se sabe a qué sala quiere ir
                 HiloServidorChat hilo = new HiloServidorChat(cliente);
                 hilo.start();
             }

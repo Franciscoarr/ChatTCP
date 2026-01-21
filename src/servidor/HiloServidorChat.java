@@ -6,7 +6,7 @@ import java.net.Socket;
 public class HiloServidorChat extends Thread {
 
     private Socket socket;
-    private InfoHilos infoSala; // La sala específica donde estará este usuario
+    private InfoHilos infoSala; //La sala donde estará el usuario
     private BufferedReader entrada;
     private PrintWriter salida;
     private String nombreCliente;
@@ -25,22 +25,22 @@ public class HiloServidorChat extends Thread {
     @Override
     public void run() {
         try {
-            // 1. LEER DATOS INICIALES (Protocolo: Nombre -> Sala)
+            //Leer datos iniciales (Protocolo: Nombre -> Sala)
             nombreCliente = entrada.readLine();
-            nombreSala = entrada.readLine(); // El cliente enviará ahora también la sala
+            nombreSala = entrada.readLine();
 
-            // 2. BUSCAR LA SALA EN EL MAPA DEL SERVIDOR
+            //Buscar la sala
             if (ServidorChat.mapaSalas.containsKey(nombreSala)) {
                 this.infoSala = ServidorChat.mapaSalas.get(nombreSala);
             } else {
-                // Si la sala no existe, lo metemos en una por defecto o creamos error
+                //Si la sala no existe, lo metemos en una por defecto o creamos error
                 this.infoSala = ServidorChat.mapaSalas.get("#chathispano");
                 nombreSala = "#chathispano";
             }
 
-            // 3. REGISTRAR USUARIO EN ESA SALA ESPECÍFICA (Lógica del PDF)
+            //Registrar usuario en la sala
             synchronized (infoSala) {
-                if (infoSala.getActuales() < 10) { // Usamos un hardcode o getter del maximo
+                if (infoSala.getActuales() < 10) {
                     infoSala.addSocket(socket, infoSala.getConexiones());
                     infoSala.setConexiones(infoSala.getConexiones() + 1);
                     infoSala.setActuales(infoSala.getActuales() + 1);
@@ -51,21 +51,20 @@ public class HiloServidorChat extends Thread {
                 }
             }
 
-            // 4. AVISAR ENTRADA (Solo a los de esa sala)
+            //Avisar entrada
             String aviso = "> " + nombreCliente + " ha entrado en " + nombreSala;
             enviarMensajesASala(aviso);
 
-            // Enviar historial previo de esa sala al nuevo usuario
-            // (Opcional, a veces es molesto recibir todo el historial)
+            //Enviar historial previo de esa sala al nuevo usuario
             salida.println(infoSala.getMensajes());
 
-            // 5. BUCLE DE MENSAJES
+            //Bucle de mensajes
             String texto;
             while ((texto = entrada.readLine()) != null) {
                 if (texto.equals("*****")) break;
 
                 String msjFinal = nombreCliente + "> " + texto;
-                // Guardamos mensaje en el historial DE ESA SALA
+                //Guardamos mensaje en el historial de esa sala
                 infoSala.setMensajes(infoSala.getMensajes() + msjFinal + "\n");
                 enviarMensajesASala(msjFinal);
             }
@@ -73,7 +72,7 @@ public class HiloServidorChat extends Thread {
         } catch (IOException e) {
             System.out.println("Cliente desconectado abruptamente");
         } finally {
-            // 6. SALIDA
+            //Salida
             if (infoSala != null) {
                 enviarMensajesASala("> " + nombreCliente + " ha salido de " + nombreSala);
                 synchronized (infoSala) {
@@ -85,9 +84,9 @@ public class HiloServidorChat extends Thread {
     }
 
     private void enviarMensajesASala(String txt) {
-        // Solo recorremos el array de sockets de ESTA sala (infoSala)
+        //Solo recorremos el array de sockets de esta sala (infoSala)
         Socket[] tabla = infoSala.getTabla();
-        // Usamos el contador histórico (conexiones) para iterar, verificando null y closed
+        //Usamos el contador histórico para iterar, verificando null y closed
         for (Socket s : tabla) {
             if (s != null && !s.isClosed()) {
                 try {

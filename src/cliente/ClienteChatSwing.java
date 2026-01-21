@@ -10,7 +10,7 @@ import java.net.Socket;
 
 public class ClienteChatSwing extends JFrame {
 
-    // Red
+    //Red
     private Socket socket;
     private BufferedReader entrada;
     private PrintWriter salida;
@@ -18,7 +18,7 @@ public class ClienteChatSwing extends JFrame {
     private String salaActual = "#chathispano"; // Sala por defecto
     private boolean conectado = false;
 
-    // GUI
+    //GUI
     private JTextArea areaChat;
     private JTextField campoMensaje;
     private JList<String> listaUsuarios;
@@ -36,14 +36,14 @@ public class ClienteChatSwing extends JFrame {
 
         construirInterfaz();
 
-        // Conectar inicialmente a la sala por defecto
+        //Conectar inicialmente a la sala por defecto
         conectarSala(salaActual);
 
         setVisible(true);
     }
 
     private void construirInterfaz() {
-        // --- PANEL IZQUIERDO (SALAS) ---
+        //Panel izquierdo
         DefaultListModel<String> modeloSalas = new DefaultListModel<>();
         modeloSalas.addElement("#chathispano");
         modeloSalas.addElement("#irc-hispano");
@@ -55,12 +55,12 @@ public class ClienteChatSwing extends JFrame {
         listaSalas.setBackground(new Color(230, 240, 255));
         listaSalas.setFixedCellHeight(30);
 
-        // **EVENTO CLAVE**: Al hacer clic en una sala
+        //Click en una sala
         listaSalas.addMouseListener(new MouseAdapter() {
             public void mouseClicked(MouseEvent evt) {
                 String salaSeleccionada = listaSalas.getSelectedValue();
                 if (salaSeleccionada != null && !salaSeleccionada.equals(salaActual)) {
-                    // Cambiar de sala
+                    //Cambiar de sala
                     cambiarDeSala(salaSeleccionada);
                 }
             }
@@ -74,7 +74,7 @@ public class ClienteChatSwing extends JFrame {
         panelIzq.add(tituloSalas, BorderLayout.NORTH);
         panelIzq.add(new JScrollPane(listaSalas), BorderLayout.CENTER);
 
-        // --- PANEL CENTRAL ---
+        //Panel centro
         areaChat = new JTextArea();
         areaChat.setEditable(false);
         labelTituloSala = new JLabel("Sala: " + salaActual);
@@ -92,7 +92,7 @@ public class ClienteChatSwing extends JFrame {
         panelCentral.add(new JScrollPane(areaChat), BorderLayout.CENTER);
         panelCentral.add(panelInferior, BorderLayout.SOUTH);
 
-        // --- PANEL DERECHO (USUARIOS) ---
+        //Panel derecho
         modeloUsuarios = new DefaultListModel<>();
         listaUsuarios = new JList<>(modeloUsuarios);
         JPanel panelDer = new JPanel(new BorderLayout());
@@ -104,26 +104,26 @@ public class ClienteChatSwing extends JFrame {
         add(panelCentral, BorderLayout.CENTER);
         add(panelDer, BorderLayout.EAST);
 
-        // Listeners Enviar
+        //Listeners Enviar
         btnEnviar.addActionListener(e -> enviarMensaje());
         campoMensaje.addActionListener(e -> enviarMensaje());
     }
 
-    // --- LÓGICA DE CONEXIÓN Y CAMBIO DE SALA ---
+    //Conexión y cambio de salas
 
     private void cambiarDeSala(String nuevaSala) {
-        // 1. Desconectar de la actual
+        //Desconectar de la actual
         try {
             if (salida != null) salida.println("*****"); // Avisar al server
             conectado = false;
             if (socket != null) socket.close();
         } catch (Exception e) {}
 
-        // 2. Limpiar pantalla
+        //Limpiar pantalla
         areaChat.setText("");
         modeloUsuarios.clear();
 
-        // 3. Conectar a la nueva
+        //Conectar a la nueva
         salaActual = nuevaSala;
         labelTituloSala.setText("Conectando a " + salaActual + "...");
         conectarSala(salaActual);
@@ -136,7 +136,7 @@ public class ClienteChatSwing extends JFrame {
                 entrada = new BufferedReader(new InputStreamReader(socket.getInputStream()));
                 salida = new PrintWriter(socket.getOutputStream(), true);
 
-                // PROTOCOLO: 1. Nombre, 2. Sala
+                //PROTOCOLO: 1.- Nombre, 2.- Sala
                 salida.println(nombreUser);
                 salida.println(sala);
 
@@ -156,14 +156,14 @@ public class ClienteChatSwing extends JFrame {
 
     private void procesarMensaje(String texto) {
         areaChat.append(texto + "\n");
-        // Scroll abajo automático
+        //Scroll abajo automático
         areaChat.setCaretPosition(areaChat.getDocument().getLength());
 
-        // Detectar entradas/salidas para la lista de usuarios
+        //Detectar entradas/salidas para la lista de usuarios
         if (texto.contains("ha entrado en")) {
-            // Lógica simple para extraer nombre (mejora esto con parsing real si quieres)
+            //Extraer nombre
             String[] partes = texto.split(" ");
-            // "> Pepe ha entrado..." -> partes[1] es Pepe
+            //partes[1] es el nombre de quien ha entrado
             if (partes.length > 1 && !modeloUsuarios.contains(partes[1])) {
                 modeloUsuarios.addElement(partes[1]);
             }
