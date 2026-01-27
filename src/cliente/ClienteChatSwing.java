@@ -15,7 +15,7 @@ public class ClienteChatSwing extends JFrame {
     private BufferedReader entrada;
     private PrintWriter salida;
     private String nombreUser;
-    private String salaActual = "#chathispano"; // Sala por defecto
+    private String salaActual = "#General"; //Sala por defecto
     private boolean conectado = false;
 
     //GUI
@@ -29,7 +29,7 @@ public class ClienteChatSwing extends JFrame {
         nombreUser = JOptionPane.showInputDialog(this, "Introduce tu Nick:", "Entrada", JOptionPane.QUESTION_MESSAGE);
         if (nombreUser == null || nombreUser.trim().isEmpty()) nombreUser = "Invitado" + (int)(Math.random()*100);
 
-        setTitle("IRC-Hispano - " + nombreUser);
+        setTitle("ChatTCP - " + nombreUser);
         setSize(1000, 600);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLayout(new BorderLayout());
@@ -45,11 +45,11 @@ public class ClienteChatSwing extends JFrame {
     private void construirInterfaz() {
         //Panel izquierdo
         DefaultListModel<String> modeloSalas = new DefaultListModel<>();
-        modeloSalas.addElement("#chathispano");
-        modeloSalas.addElement("#irc-hispano");
-        modeloSalas.addElement("#sevilla");
-        modeloSalas.addElement("#amistad");
-        modeloSalas.addElement("#programacion");
+        modeloSalas.addElement("#General");
+        modeloSalas.addElement("#Anime");
+        modeloSalas.addElement("#Videojuegos");
+        modeloSalas.addElement("#Películas");
+        modeloSalas.addElement("#Programacion");
 
         JList<String> listaSalas = new JList<>(modeloSalas);
         listaSalas.setBackground(new Color(230, 240, 255));
@@ -149,7 +149,7 @@ public class ClienteChatSwing extends JFrame {
                     SwingUtilities.invokeLater(() -> procesarMensaje(finalTexto));
                 }
             } catch (IOException e) {
-                SwingUtilities.invokeLater(() -> areaChat.append("\n[ERROR] No se pudo conectar al servidor.\n"));
+                SwingUtilities.invokeLater(() -> areaChat.append("\n[ERROR] No se pudo conectar al servidor\n"));
             }
         }).start();
     }

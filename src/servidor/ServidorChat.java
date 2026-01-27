@@ -32,7 +32,7 @@ public class ServidorChat {
                 Socket cliente = servidor.accept();
 
                 //Lanzamos el hilo. El hilo se encargará de preguntar a que sala va
-                //Nota: Ya no pasamos 'infoh' aquí, porque no se sabe a qué sala quiere ir
+                //No pasamos 'infoh' aquí, porque no se sabe a qué sala quiere ir
                 HiloServidorChat hilo = new HiloServidorChat(cliente);
                 hilo.start();
             }

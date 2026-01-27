@@ -39,9 +39,9 @@ public class HiloServidorChat extends Thread {
             if (ServidorChat.mapaSalas.containsKey(nombreSala)) {
                 this.infoSala = ServidorChat.mapaSalas.get(nombreSala);
             } else {
-                //Si la sala no existe, lo metemos en una por defecto o creamos error
-                this.infoSala = ServidorChat.mapaSalas.get("#chathispano");
-                nombreSala = "#chathispano";
+                //Si la sala no existe, lo metemos en una por defecto o le mostramos un error
+                this.infoSala = ServidorChat.mapaSalas.get("#General");
+                nombreSala = "#General";
             }
 
             //Registrar usuario en la sala
@@ -66,15 +66,13 @@ public class HiloServidorChat extends Thread {
             //Enviar historial previo de esa sala al nuevo usuario
             salida.println(infoSala.getMensajes());
 
-            // --- CORRECCIÓN 2: DECIRLE AL NUEVO QUIÉNES ESTÁN YA ---
-            // Recorremos los sockets de la sala actual
+            //Recorremos los sockets de la sala actual
             Socket[] socketsEnSala = infoSala.getTabla();
             for (Socket s : socketsEnSala) {
                 if (s != null && !s.isClosed() && s != socket) {
-                    // Recuperamos el nombre del mapa global
+                    //Recuperamos el nombre del mapa global
                     String nombreOtro = ServidorChat.nombresUsuarios.get(s);
                     if (nombreOtro != null) {
-                        // Le decimos a tu cliente: "Oye, añade a esta persona a tu lista"
                         salida.println("###PARSER-ENTRA###" + nombreOtro);
                     }
                 }
@@ -103,7 +101,7 @@ public class HiloServidorChat extends Thread {
                 }
             }
 
-            // Importante: Borrar del mapa para liberar memoria
+            //Borrar el mapa para liberar memoria
             ServidorChat.nombresUsuarios.remove(socket);
 
             try {
