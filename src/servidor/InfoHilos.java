@@ -19,8 +19,8 @@ public class InfoHilos {
 
     public synchronized int getConexiones() {
         return conexiones;
-
     }
+
     public synchronized void setConexiones(int conexiones) {
         this.conexiones = conexiones;
     }

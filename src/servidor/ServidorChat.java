@@ -18,11 +18,11 @@ public class ServidorChat {
         int puerto = 5000;
 
         //Inicializamos las salas
-        mapaSalas.put("#chathispano", new InfoHilos(MAX_POR_SALA));
-        mapaSalas.put("#irc-hispano", new InfoHilos(MAX_POR_SALA));
-        mapaSalas.put("#sevilla", new InfoHilos(MAX_POR_SALA));
-        mapaSalas.put("#amistad", new InfoHilos(MAX_POR_SALA));
-        mapaSalas.put("#programacion", new InfoHilos(MAX_POR_SALA));
+        mapaSalas.put("#General", new InfoHilos(MAX_POR_SALA));
+        mapaSalas.put("#Anime", new InfoHilos(MAX_POR_SALA));
+        mapaSalas.put("#Videojuegos", new InfoHilos(MAX_POR_SALA));
+        mapaSalas.put("#Películas", new InfoHilos(MAX_POR_SALA));
+        mapaSalas.put("#Programacion", new InfoHilos(MAX_POR_SALA));
 
         System.out.println("SERVIDOR MULTI-SALA INICIADO EN PUERTO " + puerto);
 
