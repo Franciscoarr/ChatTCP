@@ -5,7 +5,7 @@ import java.net.Socket;
 
 public class HiloServidorChat extends Thread {
 
-    private Socket socket;
+    private final Socket socket;
     private InfoHilos infoSala; //La sala donde estará el usuario
     private BufferedReader entrada;
     private PrintWriter salida;
@@ -120,7 +120,7 @@ public class HiloServidorChat extends Thread {
                 try {
                     PrintWriter out = new PrintWriter(s.getOutputStream(), true);
                     out.println(txt);
-                } catch (IOException e) { }
+                } catch (IOException _) { }
             }
         }
     }

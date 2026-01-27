@@ -21,7 +21,6 @@ public class ClienteChatSwing extends JFrame {
     //GUI
     private JTextArea areaChat;
     private JTextField campoMensaje;
-    private JList<String> listaUsuarios;
     private DefaultListModel<String> modeloUsuarios;
     private JLabel labelTituloSala;
 
@@ -94,7 +93,7 @@ public class ClienteChatSwing extends JFrame {
 
         //Panel derecho
         modeloUsuarios = new DefaultListModel<>();
-        listaUsuarios = new JList<>(modeloUsuarios);
+        JList<String> listaUsuarios = new JList<>(modeloUsuarios);
         JPanel panelDer = new JPanel(new BorderLayout());
         panelDer.setPreferredSize(new Dimension(150, 0));
         panelDer.add(new JLabel("Usuarios", SwingConstants.CENTER), BorderLayout.NORTH);
@@ -117,7 +116,7 @@ public class ClienteChatSwing extends JFrame {
             if (salida != null) salida.println("*****"); // Avisar al server
             conectado = false;
             if (socket != null) socket.close();
-        } catch (Exception e) {}
+        } catch (Exception _) {}
 
         //Limpiar pantalla
         areaChat.setText("");
