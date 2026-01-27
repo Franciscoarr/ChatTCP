@@ -109,7 +109,6 @@ public class ClienteChatSwing extends JFrame {
     }
 
     //Conexión y cambio de salas
-
     private void cambiarDeSala(String nuevaSala) {
         //Desconectar de la actual
         try {
@@ -153,26 +152,24 @@ public class ClienteChatSwing extends JFrame {
     }
 
     private void procesarMensaje(String texto) {
-
-        // Si es comando de ENTRADA
+        //Si es comando de entrada
         if (texto.startsWith("###PARSER-ENTRA###")) {
             String nombreNuevo = texto.substring("###PARSER-ENTRA###".length()).trim();
-            // Añadir a la lista visual si no existe
+            //Añadir a la lista visual si no existe
             if (!modeloUsuarios.contains(nombreNuevo) && !nombreNuevo.isEmpty()) {
                 modeloUsuarios.addElement(nombreNuevo);
             }
             return;
         }
 
-        // Si es comando de SALIDA
+        //Si es comando de salida
         if (texto.startsWith("###PARSER-SALE###")) {
             String nombreSale = texto.substring("###PARSER-SALE###".length()).trim();
             modeloUsuarios.removeElement(nombreSale);
             return;
         }
 
-        // Si el código llega hasta aquí, significa que NO era un comando oculto,
-        // así que es un mensaje de chat normal y corriente. Lo escribimos UNA SOLA VEZ.
+        //Si el código llega hasta aquí, significa que no era un comando oculto, así que es un mensaje normal y corriente
         areaChat.append(texto + "\n");
         areaChat.setCaretPosition(areaChat.getDocument().getLength());
     }
