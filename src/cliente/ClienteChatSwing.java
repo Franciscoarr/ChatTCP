@@ -149,44 +149,31 @@ public class ClienteChatSwing extends JFrame {
                     SwingUtilities.invokeLater(() -> procesarMensaje(finalTexto));
                 }
             } catch (IOException e) {
-                SwingUtilities.invokeLater(() -> areaChat.append("\n[ERROR] No se pudo conectar al servidor\n"));
             }
         }).start();
     }
 
     private void procesarMensaje(String texto) {
-        areaChat.append(texto + "\n");
-        //Scroll abajo automático
-        areaChat.setCaretPosition(areaChat.getDocument().getLength());
 
-        //Detectar entradas/salidas para la lista de usuarios
-        if (texto.contains("ha entrado en")) {
-            //Extraer nombre
-            String[] partes = texto.split(" ");
-            //partes[1] es el nombre de quien ha entrado
-            if (partes.length > 1 && !modeloUsuarios.contains(partes[1])) {
-                modeloUsuarios.addElement(partes[1]);
-            }
-        }
-
-        //Detector de comandos
+        // Si es comando de ENTRADA
         if (texto.startsWith("###PARSER-ENTRA###")) {
-            //Cortamos la etiqueta para quedarnos solo con el nombre
             String nombreNuevo = texto.substring("###PARSER-ENTRA###".length()).trim();
-
-            //Si no lo tenemos ya, lo añadimos al modelo visual
+            // Añadir a la lista visual si no existe
             if (!modeloUsuarios.contains(nombreNuevo) && !nombreNuevo.isEmpty()) {
                 modeloUsuarios.addElement(nombreNuevo);
             }
-            return; //Hacemos return para que no se escriba en el chat de texto
+            return;
         }
 
+        // Si es comando de SALIDA
         if (texto.startsWith("###PARSER-SALE###")) {
             String nombreSale = texto.substring("###PARSER-SALE###".length()).trim();
             modeloUsuarios.removeElement(nombreSale);
             return;
         }
 
+        // Si el código llega hasta aquí, significa que NO era un comando oculto,
+        // así que es un mensaje de chat normal y corriente. Lo escribimos UNA SOLA VEZ.
         areaChat.append(texto + "\n");
         areaChat.setCaretPosition(areaChat.getDocument().getLength());
     }
