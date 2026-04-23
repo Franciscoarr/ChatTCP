@@ -2,11 +2,15 @@ package servidor;
 
 import java.io.*;
 import java.net.Socket;
+import java.util.Map;
 
+/**
+ * Gestiona la comunicación con un cliente individual
+ */
 public class HiloServidorChat extends Thread {
 
     private final Socket socket;
-    private InfoHilos infoSala; //La sala donde estará el usuario
+    private InfoHilos infoSala;
     private BufferedReader entrada;
     private PrintWriter salida;
     private String nombreCliente;
@@ -15,6 +19,7 @@ public class HiloServidorChat extends Thread {
     public HiloServidorChat(Socket socket) {
         this.socket = socket;
         try {
+            // Creamos los flujos de comunicación
             entrada = new BufferedReader(new InputStreamReader(socket.getInputStream()));
             salida = new PrintWriter(socket.getOutputStream(), true);
         } catch (IOException e) {
@@ -25,33 +30,31 @@ public class HiloServidorChat extends Thread {
     @Override
     public void run() {
         try {
-            //Leer datos iniciales (Protocolo: Nombre -> Sala)
+            // 1. Leemos credenciales iniciales
             nombreCliente = entrada.readLine();
             nombreSala = entrada.readLine();
 
-            //Verificación de seguridad por si envían null
-            if (nombreCliente == null || nombreSala == null) {
+            if (nombreCliente == null) return;
+
+            // 2. Validación: ¿El Nick ya existe en el servidor?
+            if (ServidorChat.nombresUsuarios.containsValue(nombreCliente)) {
+                System.out.println("[LOG] Nick duplicado rechazado: " + nombreCliente);
+                salida.println("###ERROR-NICK###");
                 socket.close();
                 return;
             }
 
-            //Buscar la sala
-            if (ServidorChat.mapaSalas.containsKey(nombreSala)) {
-                this.infoSala = ServidorChat.mapaSalas.get(nombreSala);
-            } else {
-                //Si la sala no existe, lo metemos en una por defecto o le mostramos un error
-                this.infoSala = ServidorChat.mapaSalas.get("#General");
-                nombreSala = "#General";
-            }
+            // 3. Asignación de sala
+            this.infoSala = ServidorChat.mapaSalas.getOrDefault(nombreSala, ServidorChat.mapaSalas.get("#General"));
 
-            //Registrar usuario en la sala
+            // 4. Registro en el objeto compartido InfoHilos
             synchronized (infoSala) {
-                if (infoSala.getActuales() < 10) {
-                    infoSala.addSocket(socket, infoSala.getConexiones());
-                    infoSala.setConexiones(infoSala.getConexiones() + 1);
-                    infoSala.setActuales(infoSala.getActuales() + 1);
-                    //Guarda quien es este socket
-                    ServidorChat.nombresUsuarios.put(socket, nombreCliente);
+                if (infoSala.getActuales() < ServidorChat.MAX_POR_SALA) {
+                    if (infoSala.addSocket(socket)) {
+                        infoSala.setActuales(infoSala.getActuales() + 1);
+                        ServidorChat.nombresUsuarios.put(socket, nombreCliente);
+                        System.out.println("[LOG] " + nombreCliente + " conectado a " + nombreSala);
+                    } else { socket.close(); return; }
                 } else {
                     salida.println("Sala llena");
                     socket.close();
@@ -59,69 +62,88 @@ public class HiloServidorChat extends Thread {
                 }
             }
 
-            //Avisar entrada
-            String aviso = "> " + nombreCliente + " ha entrado en " + nombreSala;
-            enviarMensajesASala(aviso);
+            // --- PROTOCOLO DE ACTUALIZACIÓN DE LISTAS ---
+            // A. Avisamos a los que ya estaban de que hemos llegado
+            enviarMensajesASala("###PARSER-ENTRA###" + nombreCliente);
+            enviarMensajesASala("> " + nombreCliente + " ha entrado en " + nombreSala);
 
-            //Enviar historial previo de esa sala al nuevo usuario
-            salida.println(infoSala.getMensajes());
-
-            //Recorremos los sockets de la sala actual
-            Socket[] socketsEnSala = infoSala.getTabla();
-            for (Socket s : socketsEnSala) {
+            // B. Nos informamos de quiénes estaban ya para llenar nuestra lista derecha
+            Socket[] tabla = infoSala.getTabla();
+            for (Socket s : tabla) {
                 if (s != null && !s.isClosed() && s != socket) {
-                    //Recuperamos el nombre del mapa global
-                    String nombreOtro = ServidorChat.nombresUsuarios.get(s);
-                    if (nombreOtro != null) {
-                        salida.println("###PARSER-ENTRA###" + nombreOtro);
-                    }
+                    String otro = ServidorChat.nombresUsuarios.get(s);
+                    if (otro != null) salida.println("###PARSER-ENTRA###" + otro);
                 }
             }
 
-            //Bucle de mensajes
+            // 5. Bucle principal: Escuchar mensajes del cliente
             String texto;
             while ((texto = entrada.readLine()) != null) {
-                if (texto.equals("*****")) break;
+                if (texto.equals("*****")) break; // Salida voluntaria
 
-                String msjFinal = nombreCliente + "> " + texto;
-                //Guardamos mensaje en el historial de esa sala
-                infoSala.setMensajes(infoSala.getMensajes() + msjFinal + "\n");
-                enviarMensajesASala(msjFinal);
+                // Mensaje Privado (1 a 1)
+                if (texto.startsWith("/privado ")) {
+                    procesarMensajePrivado(texto);
+                } else {
+                    // Mensaje General
+                    String msj = nombreCliente + "> " + texto;
+                    infoSala.setMensajes(infoSala.getMensajes() + msj + "\n");
+                    enviarMensajesASala(msj);
+                }
             }
 
         } catch (IOException e) {
-            System.out.println("Cliente desconectado abruptamente");
+            System.out.println("[LOG] Desconexión abrupta de " + nombreCliente);
         } finally {
-            //Salida
-            if (infoSala != null) {
-                enviarMensajesASala("> " + nombreCliente + " ha salido de " + nombreSala);
-                enviarMensajesASala("###PARSER-SALE###" + nombreCliente);
-                synchronized (infoSala) {
-                    infoSala.setActuales(infoSala.getActuales() - 1);
-                }
-            }
-
-            //Borrar el mapa para liberar memoria
-            ServidorChat.nombresUsuarios.remove(socket);
-
-            try {
-                socket.close();
-            } catch (IOException e)
-            {}
+            finalizarConexion();
         }
     }
 
+    private void procesarMensajePrivado(String texto) {
+        String[] partes = texto.split(" ", 3);
+        if (partes.length == 3) {
+            String destino = partes[1];
+            String msj = partes[2];
+            boolean enviado = false;
+
+            for (Map.Entry<Socket, String> entry : ServidorChat.nombresUsuarios.entrySet()) {
+                if (entry.getValue().equalsIgnoreCase(destino)) {
+                    try {
+                        PrintWriter out = new PrintWriter(entry.getKey().getOutputStream(), true);
+                        out.println("[PRIVADO de " + nombreCliente + "]: " + msj);
+                        salida.println("[PRIVADO para " + destino + "]: " + msj);
+                        enviado = true;
+                        break;
+                    } catch (IOException _) {}
+                }
+            }
+            if (!enviado) salida.println("> Sistema: El usuario '" + destino + "' no está online");
+        }
+    }
+
+    /**
+     * Envía un mensaje a todos los sockets activos de la sala actual
+     */
     private void enviarMensajesASala(String txt) {
-        //Solo recorremos el array de sockets de esta sala (infoSala)
         Socket[] tabla = infoSala.getTabla();
-        //Usamos el contador histórico para iterar, verificando null y closed
         for (Socket s : tabla) {
             if (s != null && !s.isClosed()) {
                 try {
-                    PrintWriter out = new PrintWriter(s.getOutputStream(), true);
-                    out.println(txt);
-                } catch (IOException _) { }
+                    new PrintWriter(s.getOutputStream(), true).println(txt);
+                } catch (IOException _) {}
             }
         }
+    }
+
+    private void finalizarConexion() {
+        if (infoSala != null && nombreCliente != null) {
+            enviarMensajesASala("> " + nombreCliente + " ha abandonado el canal");
+            enviarMensajesASala("###PARSER-SALE###" + nombreCliente);
+            synchronized (infoSala) {
+                infoSala.setActuales(infoSala.getActuales() - 1);
+            }
+        }
+        ServidorChat.nombresUsuarios.remove(socket);
+        try { socket.close(); } catch (IOException _) {}
     }
 }
