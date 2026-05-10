@@ -3,10 +3,9 @@ package servidor;
 import java.io.*;
 import java.net.Socket;
 import java.util.Map;
+import java.util.Timer;
+import java.util.TimerTask;
 
-/**
- * Gestiona la comunicación con un cliente individual
- */
 public class HiloServidorChat extends Thread {
 
     private final Socket socket;
@@ -14,60 +13,84 @@ public class HiloServidorChat extends Thread {
     private BufferedReader entrada;
     private PrintWriter salida;
     private String nombreCliente;
+    private String rolCliente;
     private String nombreSala;
 
     public HiloServidorChat(Socket socket) {
         this.socket = socket;
         try {
-            // Creamos los flujos de comunicación
             entrada = new BufferedReader(new InputStreamReader(socket.getInputStream()));
             salida = new PrintWriter(socket.getOutputStream(), true);
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
+        } catch (IOException e) {}
     }
 
     @Override
     public void run() {
         try {
-            // 1. Leemos credenciales iniciales
-            nombreCliente = entrada.readLine();
+            // 1. SISTEMA DE LOGIN Y REGISTRO (Recibe: ACCION###Nick###Password)
+            String loginData = entrada.readLine();
             nombreSala = entrada.readLine();
 
-            if (nombreCliente == null) return;
+            if (loginData == null || !loginData.contains("###")) { socket.close(); return; }
 
-            // 2. Validación: ¿El Nick ya existe en el servidor?
-            if (ServidorChat.nombresUsuarios.containsValue(nombreCliente)) {
-                System.out.println("[LOG] Nick duplicado rechazado: " + nombreCliente);
-                salida.println("###ERROR-NICK###");
-                socket.close();
-                return;
-            }
+            String[] credenciales = loginData.split("###");
+            if (credenciales.length < 3) { socket.close(); return; }
 
-            // 3. Asignación de sala
-            this.infoSala = ServidorChat.mapaSalas.getOrDefault(nombreSala, ServidorChat.mapaSalas.get("#General"));
+            String accion = credenciales[0]; // LOGIN o REGISTER
+            nombreCliente = credenciales[1];
+            String password = credenciales[2];
+            String ipCliente = socket.getInetAddress().getHostAddress();
 
-            // 4. Registro en el objeto compartido InfoHilos
-            synchronized (infoSala) {
-                if (infoSala.getActuales() < ServidorChat.MAX_POR_SALA) {
-                    if (infoSala.addSocket(socket)) {
-                        infoSala.setActuales(infoSala.getActuales() + 1);
-                        ServidorChat.nombresUsuarios.put(socket, nombreCliente);
-                        System.out.println("[LOG] " + nombreCliente + " conectado a " + nombreSala);
-                    } else { socket.close(); return; }
+            // 2. Lógica de Acción (Registrar o Validar)
+            if (accion.equals("REGISTER")) {
+                String resultado = GestorSeguridad.registrarUsuario(nombreCliente, password);
+                if (resultado.equals("EXISTS")) {
+                    salida.println("###ERROR-LOGIN###El nickname ya existe. Inicia sesión o elige otro.");
+                    socket.close(); return;
+                } else if (resultado.equals("OK")) {
+                    rolCliente = "ORDINARIO"; // Por defecto
                 } else {
-                    salida.println("Sala llena");
-                    socket.close();
-                    return;
+                    salida.println("###ERROR-LOGIN###Error al guardar en el servidor.");
+                    socket.close(); return;
+                }
+            }
+            else if (accion.equals("LOGIN")) {
+                rolCliente = GestorSeguridad.validarUsuario(ipCliente, nombreCliente, password);
+
+                if (rolCliente == null) {
+                    salida.println("###ERROR-LOGIN###Credenciales incorrectas");
+                    socket.close(); return;
+                } else if (rolCliente.equals("BLOQUEADO")) {
+                    salida.println("###ERROR-LOGIN###Demasiados intentos. IP Bloqueada.");
+                    socket.close(); return;
                 }
             }
 
-            // --- PROTOCOLO DE ACTUALIZACIÓN DE LISTAS ---
-            // A. Avisamos a los que ya estaban de que hemos llegado
-            enviarMensajesASala("###PARSER-ENTRA###" + nombreCliente);
-            enviarMensajesASala("> " + nombreCliente + " ha entrado en " + nombreSala);
+            // Comprobar si ya estaba conectado
+            if (ServidorChat.nombresUsuarios.containsValue(nombreCliente)) {
+                salida.println("###ERROR-LOGIN###El usuario ya está conectado.");
+                socket.close(); return;
+            }
 
-            // B. Nos informamos de quiénes estaban ya para llenar nuestra lista derecha
+            // --- Éxito al conectar ---
+            salida.println("###LOGIN-OK###" + rolCliente);
+            this.infoSala = ServidorChat.mapaSalas.getOrDefault(nombreSala, ServidorChat.mapaSalas.get("#General"));
+
+            synchronized (infoSala) {
+                if (infoSala.addSocket(socket)) {
+                    infoSala.setActuales(infoSala.getActuales() + 1);
+                    ServidorChat.nombresUsuarios.put(socket, nombreCliente);
+                    ServidorChat.rolesUsuarios.put(nombreCliente, rolCliente);
+                    ServidorChat.registrarLog(nombreCliente + " conectado a " + nombreSala + " (" + accion + ")");
+                } else {
+                    salida.println("###ERROR-LOGIN###Sala llena");
+                    socket.close(); return;
+                }
+            }
+
+            enviarMensajesASala("###PARSER-ENTRA###" + nombreCliente);
+            enviarMensajesASala("> " + nombreCliente + " (" + rolCliente + ") ha entrado en " + nombreSala);
+
             Socket[] tabla = infoSala.getTabla();
             for (Socket s : tabla) {
                 if (s != null && !s.isClosed() && s != socket) {
@@ -76,61 +99,138 @@ public class HiloServidorChat extends Thread {
                 }
             }
 
-            // 5. Bucle principal: Escuchar mensajes del cliente
+            // 3. BUCLE PRINCIPAL DE COMANDOS
             String texto;
             while ((texto = entrada.readLine()) != null) {
-                if (texto.equals("*****")) break; // Salida voluntaria
+                if (texto.equals("*****")) break;
 
-                // Mensaje Privado (1 a 1)
-                if (texto.startsWith("/privado ")) {
-                    procesarMensajePrivado(texto);
-                } else {
-                    // Mensaje General
-                    String msj = nombreCliente + "> " + texto;
-                    infoSala.setMensajes(infoSala.getMensajes() + msj + "\n");
-                    enviarMensajesASala(msj);
+                // Suspensión: Bloquea hablar a menos que seas moderador
+                if (infoSala.isSuspendido() && !ServidorChat.rolesUsuarios.get(nombreCliente).equals("MODERADOR") && !texto.startsWith("/")) {
+                    salida.println("> Sistema: El canal está suspendido por un moderador.");
+                    continue;
                 }
-            }
 
+                if (texto.startsWith("/")) procesarComandos(texto);
+                else enviarMensajesASala(nombreCliente + "> " + texto);
+            }
         } catch (IOException e) {
-            System.out.println("[LOG] Desconexión abrupta de " + nombreCliente);
+            ServidorChat.registrarLog("Desconexión abrupta de " + nombreCliente);
         } finally {
             finalizarConexion();
         }
     }
 
-    private void procesarMensajePrivado(String texto) {
+    private void procesarComandos(String texto) {
         String[] partes = texto.split(" ", 3);
-        if (partes.length == 3) {
+        String comando = partes[0].toLowerCase();
+
+        // Verificamos el rol directamente desde el mapa central (por si nos han hecho promote)
+        boolean esMod = ServidorChat.rolesUsuarios.get(nombreCliente).equals("MODERADOR");
+
+        // --- COMANDOS PARA TODOS ---
+
+        // Mensajes Privados y Archivos
+        if (comando.equals("/privado") || comando.equals("/file")) {
+            if (partes.length < 3) return;
             String destino = partes[1];
-            String msj = partes[2];
-            boolean enviado = false;
+            String payloadCifrado = partes[2];
 
             for (Map.Entry<Socket, String> entry : ServidorChat.nombresUsuarios.entrySet()) {
                 if (entry.getValue().equalsIgnoreCase(destino)) {
                     try {
                         PrintWriter out = new PrintWriter(entry.getKey().getOutputStream(), true);
-                        out.println("[PRIVADO de " + nombreCliente + "]: " + msj);
-                        salida.println("[PRIVADO para " + destino + "]: " + msj);
-                        enviado = true;
-                        break;
+                        String prefijo = comando.equals("/file") ? "[ARCHIVO PRIVADO de " : "[PRIVADO de ";
+                        out.println(prefijo + nombreCliente + "]: " + payloadCifrado);
+                        salida.println("[Enviado a " + destino + "]: " + payloadCifrado);
                     } catch (IOException _) {}
                 }
             }
-            if (!enviado) salida.println("> Sistema: El usuario '" + destino + "' no está online");
+        }
+
+        // Borrar Mensajes (Dual: Propio vs Otros)
+        else if (comando.equals("/delmsg")) {
+            String targetNick = nombreCliente; // Por defecto se borra el suyo propio
+
+            // Si intenta especificar un nombre para borrar el de otro...
+            if (partes.length >= 2) {
+                if (esMod) {
+                    targetNick = partes[1]; // Si es moderador, le dejamos apuntar a otro
+                } else {
+                    salida.println("> Sistema: Error. Solo un Moderador puede borrar los mensajes de otra persona.");
+                    return; // Abortamos
+                }
+            }
+
+            // Avisamos a todos los clientes que borren el último mensaje de 'targetNick'
+            for (Socket s : ServidorChat.nombresUsuarios.keySet()) {
+                if (s != null && !s.isClosed()) {
+                    try { new PrintWriter(s.getOutputStream(), true).println("###DEL-LAST###" + targetNick); } catch (IOException e) {}
+                }
+            }
+
+            // Modificamos el historial guardado en el servidor
+            String history = infoSala.getMensajes();
+            String[] lines = history.split("\n");
+            StringBuilder newHistory = new StringBuilder();
+            boolean deleted = false;
+            for (int i = lines.length - 1; i >= 0; i--) {
+                if (!deleted && lines[i].startsWith(targetNick + "> ")) {
+                    newHistory.insert(0, ">> Mensaje eliminado <<\n");
+                    deleted = true;
+                } else if (!lines[i].trim().isEmpty()) {
+                    newHistory.insert(0, lines[i] + "\n");
+                }
+            }
+            infoSala.setMensajes(newHistory.toString());
+
+            // Si el moderador ha borrado el de otra persona, dejamos constancia en el chat
+            if (!targetNick.equals(nombreCliente)) {
+                enviarMensajesASala("> Sistema: Un Moderador ha suprimido un mensaje de " + targetNick);
+            }
+        }
+
+        // --- COMANDOS EXCLUSIVOS DE MODERADOR ---
+        else if (esMod) {
+            if (comando.equals("/kick") && partes.length >= 2) {
+                String target = partes[1];
+                enviarMensajesASala("> Sistema: " + target + " ha sido EXPULSADO por el moderador.");
+                for (Map.Entry<Socket, String> entry : ServidorChat.nombresUsuarios.entrySet()) {
+                    if (entry.getValue().equalsIgnoreCase(target)) {
+                        try { new PrintWriter(entry.getKey().getOutputStream(), true).println("###KICKED###"); } catch (IOException e) {}
+                    }
+                }
+            }
+            else if (comando.equals("/suspend")) {
+                infoSala.setSuspendido(!infoSala.isSuspendido());
+                enviarMensajesASala("> Sistema: El moderador ha " + (infoSala.isSuspendido() ? "SUSPENDIDO" : "REANUDADO") + " el canal.");
+            }
+            else if (comando.equals("/promote") && partes.length >= 3) {
+                String target = partes[1];
+                int tiempoSecs = Integer.parseInt(partes[2]);
+                ServidorChat.rolesUsuarios.put(target, "MODERADOR");
+                enviarMensajesASala("> Sistema: " + target + " ha sido ascendido a MODERADOR temporalmente.");
+
+                // Temporizador para devolverlo a la normalidad
+                new Timer().schedule(new TimerTask() {
+                    @Override
+                    public void run() {
+                        if (ServidorChat.rolesUsuarios.containsKey(target)) {
+                            ServidorChat.rolesUsuarios.put(target, "ORDINARIO");
+                            enviarMensajesASala("> Sistema: Los privilegios de " + target + " han expirado.");
+                        }
+                    }
+                }, tiempoSecs * 1000L);
+            }
+        } else {
+            salida.println("> Sistema: No tienes permisos de Moderador para usar este comando.");
         }
     }
 
-    /**
-     * Envía un mensaje a todos los sockets activos de la sala actual
-     */
     private void enviarMensajesASala(String txt) {
         Socket[] tabla = infoSala.getTabla();
         for (Socket s : tabla) {
             if (s != null && !s.isClosed()) {
-                try {
-                    new PrintWriter(s.getOutputStream(), true).println(txt);
-                } catch (IOException _) {}
+                try { new PrintWriter(s.getOutputStream(), true).println(txt); } catch (IOException _) {}
             }
         }
     }
@@ -139,11 +239,11 @@ public class HiloServidorChat extends Thread {
         if (infoSala != null && nombreCliente != null) {
             enviarMensajesASala("> " + nombreCliente + " ha abandonado el canal");
             enviarMensajesASala("###PARSER-SALE###" + nombreCliente);
-            synchronized (infoSala) {
-                infoSala.setActuales(infoSala.getActuales() - 1);
-            }
+            synchronized (infoSala) { infoSala.setActuales(infoSala.getActuales() - 1); }
+            ServidorChat.registrarLog(nombreCliente + " desconectado.");
         }
         ServidorChat.nombresUsuarios.remove(socket);
+        ServidorChat.rolesUsuarios.remove(nombreCliente);
         try { socket.close(); } catch (IOException _) {}
     }
 }

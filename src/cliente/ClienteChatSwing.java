@@ -1,5 +1,6 @@
 package cliente;
 
+import servidor.GestorSeguridad;
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import java.awt.*;
@@ -7,97 +8,108 @@ import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.io.*;
 import java.net.Socket;
+import java.util.Base64;
 
-/**
- * Clase que gestiona la interfaz gráfica y la lógica de red del cliente.
- * Implementa los requisitos de Nickname único, multicanal
- * y entorno gráfico
- */
 public class ClienteChatSwing extends JFrame {
 
-    // --- Atributos de Red ---
     private Socket socket;
-    private BufferedReader entrada; // Para leer lo que envía el servidor
-    private PrintWriter salida;     // Para enviar mensajes al servidor
+    private BufferedReader entrada;
+    private PrintWriter salida;
     private String nombreUser;
+    private String passwordUser;
+    private String rolActual;
     private String salaActual = "#General";
     private boolean conectado = false;
 
-    // --- Componentes GUI ---
     private JTextArea areaChat;
     private JTextField campoMensaje;
-    private DefaultListModel<String> modeloUsuarios; // Lista dinámica de usuarios
+    private DefaultListModel<String> modeloUsuarios;
     private JLabel labelTituloSala;
 
     public ClienteChatSwing() {
-        // 1. Pedimos el Nick nada más arrancar
-        pedirNickInicial();
-
-        // Configuración básica de la ventana (JFrame)
-        setTitle("ChatTCP - " + nombreUser);
         setSize(1000, 600);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLayout(new BorderLayout());
 
-        // 2. Construimos la interfaz y conectamos al servidor
+        // Se construye todo oculto primero
         construirInterfaz();
-        conectarSala(salaActual);
+        setLocationRelativeTo(null);
 
-        setVisible(true);
+        // Pide los datos. El formulario se encarga de mostrar la GUI si tiene éxito
+        iniciarAutenticacion();
     }
 
     /**
-     * Metodo para solicitar el Nickname. Si se deja vacío, genera uno aleatorio.
+     * Requisito: Formulario de Login/Registro recursivo.
+     * Te vuelve a saltar si te equivocas (hasta límite IP del servidor).
      */
-    private void pedirNickInicial() {
-        nombreUser = JOptionPane.showInputDialog(this, "Introduce tu Nick:", "Entrada al Chat", JOptionPane.QUESTION_MESSAGE);
-        if (nombreUser == null || nombreUser.trim().isEmpty()) {
-            nombreUser = "Invitado" + (int)(Math.random() * 1000);
+    private void iniciarAutenticacion() {
+        JPanel panel = new JPanel(new GridLayout(2, 2, 5, 5));
+        JTextField txtNick = new JTextField();
+        JPasswordField txtPass = new JPasswordField();
+        panel.add(new JLabel("Nickname:"));
+        panel.add(txtNick);
+        panel.add(new JLabel("Password:"));
+        panel.add(txtPass);
+
+        Object[] opciones = {"Iniciar Sesión", "Registrarse", "Cancelar"};
+        int result = JOptionPane.showOptionDialog(this, panel, "Acceso al Servidor",
+                JOptionPane.YES_NO_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE,
+                null, opciones, opciones[0]);
+
+        // Si pulsa Cancelar o cierra la ventana
+        if (result == 2 || result == JOptionPane.CLOSED_OPTION) {
+            System.exit(0);
         }
+
+        String nickForm = txtNick.getText().trim();
+        String passForm = new String(txtPass.getPassword());
+        String accion = (result == 0) ? "LOGIN" : "REGISTER";
+
+        if (!nickForm.matches("^[a-zA-Z][a-zA-Z0-9_-]*$")) {
+            JOptionPane.showMessageDialog(this, "Formato inválido. Debe empezar por letra y no contener espacios ni símbolos especiales.", "Alerta de Seguridad", JOptionPane.ERROR_MESSAGE);
+            iniciarAutenticacion(); // Repetimos bucle
+            return;
+        }
+
+        nickForm = nickForm.replaceAll("(?i)(http://|https://|www\\.)", "[FILTRADO]");
+
+        this.nombreUser = nickForm;
+        this.passwordUser = passForm;
+
+        conectarSala(salaActual, accion);
     }
 
     private void construirInterfaz() {
-        // --- PANEL IZQUIERDO: SELECCIÓN DE CANALES ---
         DefaultListModel<String> modeloSalas = new DefaultListModel<>();
-        String[] salas = {"#General", "#Anime", "#Videojuegos", "#Películas", "#Programacion"};
+        String[] salas = {"#General", "#Anime"};
         for (String s : salas) modeloSalas.addElement(s);
 
         JList<String> listaSalas = new JList<>(modeloSalas);
-        listaSalas.setBackground(new Color(230, 240, 255));
-        listaSalas.setFixedCellHeight(30);
-
-        // Listener para cambiar de sala al hacer clic
         listaSalas.addMouseListener(new MouseAdapter() {
             public void mouseClicked(MouseEvent evt) {
-                String salaSeleccionada = listaSalas.getSelectedValue();
-                if (salaSeleccionada != null && !salaSeleccionada.equals(salaActual)) {
-                    cambiarDeSala(salaSeleccionada);
-                }
+                String s = listaSalas.getSelectedValue();
+                if (s != null && !s.equals(salaActual)) cambiarDeSala(s);
             }
         });
 
         JPanel panelIzq = new JPanel(new BorderLayout());
-        panelIzq.setBackground(new Color(50, 80, 160));
         panelIzq.setPreferredSize(new Dimension(180, 0));
-        JLabel tituloSalas = new JLabel(" CANALES", SwingConstants.CENTER);
-        tituloSalas.setForeground(Color.WHITE);
-        panelIzq.add(tituloSalas, BorderLayout.NORTH);
+        panelIzq.add(new JLabel(" CANALES"), BorderLayout.NORTH);
         panelIzq.add(new JScrollPane(listaSalas), BorderLayout.CENTER);
 
-        // --- PANEL CENTRAL: ÁREA DE CHAT Y ESCRITURA ---
         areaChat = new JTextArea();
-        areaChat.setEditable(false); // El usuario no escribe directamente en el chat
+        areaChat.setEditable(false);
         labelTituloSala = new JLabel("Sala: " + salaActual);
-        labelTituloSala.setFont(new Font("Arial", Font.BOLD, 16));
         labelTituloSala.setBorder(new EmptyBorder(5, 5, 5, 5));
 
         campoMensaje = new JTextField();
         JButton btnEnviar = new JButton("Enviar");
-        JButton btnSalir = new JButton("Salir"); // Requisito [cite: 33]
-        btnSalir.setBackground(new Color(220, 50, 50));
-        btnSalir.setForeground(Color.WHITE);
+        JButton btnFile = new JButton("Archivo");
+        JButton btnSalir = new JButton("Salir");
 
         JPanel panelBotones = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+        panelBotones.add(btnFile);
         panelBotones.add(btnEnviar);
         panelBotones.add(btnSalir);
 
@@ -110,138 +122,186 @@ public class ClienteChatSwing extends JFrame {
         panelCentral.add(new JScrollPane(areaChat), BorderLayout.CENTER);
         panelCentral.add(panelInferior, BorderLayout.SOUTH);
 
-        // --- PANEL DERECHO: LISTA DE USUARIOS ACTIVOS ---
         modeloUsuarios = new DefaultListModel<>();
         JList<String> listaUsuarios = new JList<>(modeloUsuarios);
-
-        // Doble clic en un nombre para preparar un Mensaje Privado
         listaUsuarios.addMouseListener(new MouseAdapter() {
             public void mouseClicked(MouseEvent evt) {
                 if (evt.getClickCount() == 2) {
-                    String userSel = listaUsuarios.getSelectedValue();
-                    if (userSel != null) {
-                        campoMensaje.setText("/privado " + userSel + " ");
-                        campoMensaje.requestFocus();
-                    }
+                    campoMensaje.setText("/privado " + listaUsuarios.getSelectedValue() + " ");
                 }
             }
         });
 
         JPanel panelDer = new JPanel(new BorderLayout());
         panelDer.setPreferredSize(new Dimension(150, 0));
-        panelDer.add(new JLabel("Usuarios", SwingConstants.CENTER), BorderLayout.NORTH);
+        panelDer.add(new JLabel("Usuarios"), BorderLayout.NORTH);
         panelDer.add(new JScrollPane(listaUsuarios), BorderLayout.CENTER);
 
-        // Añadimos todo al frame principal
         add(panelIzq, BorderLayout.WEST);
         add(panelCentral, BorderLayout.CENTER);
         add(panelDer, BorderLayout.EAST);
 
-        // Listeners de acción
         btnEnviar.addActionListener(e -> enviarMensaje());
         campoMensaje.addActionListener(e -> enviarMensaje());
+        btnFile.addActionListener(e -> enviarArchivoPrivado(listaUsuarios.getSelectedValue()));
+
         btnSalir.addActionListener(e -> {
-            if (salida != null) salida.println("*****"); // Notifica cierre al servidor
+            if (salida != null) salida.println("*****");
             System.exit(0);
         });
     }
 
-    /**
-     * Gestiona la desconexión de la sala actual y conexión a la nueva
-     */
     private void cambiarDeSala(String nuevaSala) {
         try {
             if (salida != null) salida.println("*****");
             conectado = false;
-            Thread.sleep(150); // Pausa para que el servidor procese la salida antes de la nueva entrada
+            Thread.sleep(150);
             if (socket != null) socket.close();
         } catch (Exception _) {}
 
         areaChat.setText("");
         modeloUsuarios.clear();
         salaActual = nuevaSala;
-        labelTituloSala.setText("Conectando a " + salaActual + "...");
-        conectarSala(salaActual);
+        conectarSala(salaActual, "LOGIN"); // Al cambiar de sala pasamos el LOGIN directo
     }
 
-    /**
-     * Hilo secundario para no bloquear la interfaz gráfica mientras se espera respuesta del servidor
-     */
-    private void conectarSala(String sala) {
+    private void conectarSala(String sala, String accion) {
         new Thread(() -> {
             try {
-                // Conexión TCP al puerto 5000
                 socket = new Socket("localhost", 5000);
                 entrada = new BufferedReader(new InputStreamReader(socket.getInputStream()));
                 salida = new PrintWriter(socket.getOutputStream(), true);
 
-                // Protocolo de inicio: Enviamos Nick y luego Sala
-                salida.println(nombreUser);
+                // Protocolo: ACCION###NICK###PASS
+                salida.println(accion + "###" + nombreUser + "###" + passwordUser);
                 salida.println(sala);
 
-                conectado = true;
+                String respuestaServer = entrada.readLine();
 
-                // Nos añadimos a nuestra propia lista local
-                SwingUtilities.invokeLater(() -> {
-                    labelTituloSala.setText("Sala: " + sala);
-                    if (!modeloUsuarios.contains(nombreUser)) modeloUsuarios.addElement(nombreUser);
-                });
+                // Si hay error en las credenciales
+                if (respuestaServer != null && respuestaServer.startsWith("###ERROR-LOGIN###")) {
+                    String msgError = respuestaServer.split("###")[2];
+                    SwingUtilities.invokeLater(() -> {
+                        JOptionPane.showMessageDialog(this, msgError, "Error de acceso", JOptionPane.ERROR_MESSAGE);
+                        // Si la IP está bloqueada, cerramos todo. Si no, le damos otra oportunidad.
+                        if (msgError.contains("Bloqueada")) {
+                            System.exit(0);
+                        } else {
+                            iniciarAutenticacion(); // Bucle: Vuelve a sacarle la ventana
+                        }
+                    });
+                    socket.close();
+                    return; // Terminamos este hilo
+                }
+                else if (respuestaServer != null && respuestaServer.startsWith("###LOGIN-OK###")) {
+                    rolActual = respuestaServer.split("###")[2];
+                    conectado = true;
 
-                // Bucle de lectura constante
+                    SwingUtilities.invokeLater(() -> {
+                        setTitle("ChatTCP - " + nombreUser + " [" + rolActual + "]");
+                        labelTituloSala.setText("Sala: " + sala);
+                        if (!modeloUsuarios.contains(nombreUser)) modeloUsuarios.addElement(nombreUser);
+                        setVisible(true); // Solo hacemos visible el chat si ha tenido exito
+                    });
+                }
+
+                // Hilo escuchando al chat
                 String texto;
                 while (conectado && (texto = entrada.readLine()) != null) {
                     final String msg = texto;
                     SwingUtilities.invokeLater(() -> procesarMensaje(msg));
                 }
             } catch (IOException e) {
-                if (conectado) SwingUtilities.invokeLater(() -> areaChat.append("Error: Servidor desconectado.\n"));
+                if (conectado) SwingUtilities.invokeLater(() -> areaChat.append("Desconectado.\n"));
             }
         }).start();
     }
 
-    /**
-     * Interpreta si el mensaje del servidor es texto para el chat o un comando de control
-     */
     private void procesarMensaje(String texto) {
-        // CASO: Nick ya está en uso
-        if (texto.equals("###ERROR-NICK###")) {
-            conectado = false;
-            String nuevoNick = JOptionPane.showInputDialog(this,
-                    "El nick '" + nombreUser + "' ya está ocupado. Elige otro:",
-                    "Nick Duplicado", JOptionPane.WARNING_MESSAGE);
+        if (texto.equals("###KICKED###")) {
+            JOptionPane.showMessageDialog(this, "Has sido expulsado del canal por un moderador.", "Expulsado", JOptionPane.WARNING_MESSAGE);
+            System.exit(0);
+        }
 
-            if (nuevoNick == null || nuevoNick.trim().isEmpty()) System.exit(0);
-            else {
-                nombreUser = nuevoNick;
-                setTitle("ChatTCP - " + nombreUser);
-                conectarSala(salaActual);
+        if (texto.startsWith("###DEL-LAST###")) {
+            String targetNick = texto.substring("###DEL-LAST###".length()).trim();
+            String currentText = areaChat.getText();
+            String[] lines = currentText.split("\n");
+            StringBuilder newText = new StringBuilder();
+            boolean deleted = false;
+
+            for (int i = lines.length - 1; i >= 0; i--) {
+                if (!deleted && (lines[i].startsWith(targetNick + "> ") ||
+                        lines[i].startsWith("[PRIVADO de " + targetNick + "]:") ||
+                        lines[i].startsWith("[ARCHIVO PRIVADO de " + targetNick + "]:") ||
+                        lines[i].startsWith("[Enviado a "))) {
+
+                    newText.insert(0, ">> Mensaje eliminado <<\n");
+                    deleted = true;
+                } else {
+                    newText.insert(0, lines[i] + "\n");
+                }
             }
+            areaChat.setText(newText.toString());
             return;
         }
 
-        // Comando oculto para actualizar la lista de usuarios a la derecha
         if (texto.startsWith("###PARSER-ENTRA###")) {
             String nick = texto.substring(18).trim();
             if (!modeloUsuarios.contains(nick)) modeloUsuarios.addElement(nick);
             return;
         }
-
         if (texto.startsWith("###PARSER-SALE###")) {
-            String nick = texto.substring(17).trim();
-            modeloUsuarios.removeElement(nick);
+            modeloUsuarios.removeElement(texto.substring(17).trim());
             return;
         }
 
-        // Mensaje normal de chat
+        if (texto.contains("PRIVADO de") || texto.contains("Enviado a")) {
+            String[] partes = texto.split("]: ", 2);
+            if (partes.length == 2) {
+                String header = partes[0] + "]: ";
+                String descifrado = GestorSeguridad.descifrarAES(partes[1]);
+                areaChat.append(header + descifrado + "\n");
+                return;
+            }
+        }
+
         areaChat.append(texto + "\n");
         areaChat.setCaretPosition(areaChat.getDocument().getLength());
     }
 
     private void enviarMensaje() {
-        if (campoMensaje.getText().isEmpty()) return;
-        if (salida != null) {
-            salida.println(campoMensaje.getText());
-            campoMensaje.setText("");
+        String msg = campoMensaje.getText();
+        if (msg.isEmpty()) return;
+
+        if (msg.startsWith("/privado ")) {
+            String[] partes = msg.split(" ", 3);
+            if (partes.length == 3) {
+                String cifrado = GestorSeguridad.cifrarAES(partes[2]);
+                salida.println("/privado " + partes[1] + " " + cifrado);
+            }
+        } else {
+            salida.println(msg);
+        }
+        campoMensaje.setText("");
+    }
+
+    private void enviarArchivoPrivado(String destino) {
+        if (destino == null || destino.equals(nombreUser)) {
+            JOptionPane.showMessageDialog(this, "Selecciona un usuario de la lista para enviarle el archivo.");
+            return;
+        }
+        JFileChooser fc = new JFileChooser();
+        if (fc.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
+            try {
+                byte[] bytes = java.nio.file.Files.readAllBytes(fc.getSelectedFile().toPath());
+                String base64 = Base64.getEncoder().encodeToString(bytes);
+                String archivoCifrado = GestorSeguridad.cifrarAES("[ARCHIVO: " + fc.getSelectedFile().getName() + "] Payload: " + base64.substring(0, Math.min(base64.length(), 20)) + "... (truncado)");
+                salida.println("/file " + destino + " " + archivoCifrado);
+                JOptionPane.showMessageDialog(this, "Archivo enviado cifrado a " + destino);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
         }
     }
 

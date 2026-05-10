@@ -1,0 +1,11 @@
+[LOG] SERVIDOR MULTISALA INICIADO EN PUERTO 5000
+[LOG] paco conectado a #General (REGISTER)
+[LOG] admin conectado a #General (LOGIN)
+[LOG] paco desconectado.
+[LOG] paco conectado a #Anime (LOGIN)
+[LOG] paco desconectado.
+[LOG] paco conectado a #General (LOGIN)
+[LOG] Desconexión abrupta de paco
+[LOG] paco desconectado.
+[LOG] paco conectado a #General (LOGIN)
+
