@@ -66,8 +66,8 @@ public class ClienteChatSwing extends JFrame {
         String passForm = new String(txtPass.getPassword());
         String accion = (result == 0) ? "LOGIN" : "REGISTER";
 
-        if (!nickForm.matches("^[a-zA-Z][a-zA-Z0-9_-]*$")) {
-            JOptionPane.showMessageDialog(this, "Formato inválido. Debe empezar por letra y no contener espacios ni símbolos especiales.", "Alerta de Seguridad", JOptionPane.ERROR_MESSAGE);
+        if (!nickForm.matches("^[a-zA-Z][a-zA-Z0-9_]*$")) {
+            JOptionPane.showMessageDialog(this, "Formato inválido. Debe empezar por letra y no contener espacios ni símbolos especiales como guiones.", "Alerta de Seguridad", JOptionPane.ERROR_MESSAGE);
             iniciarAutenticacion(); // Repetimos bucle
             return;
         }
@@ -273,6 +273,12 @@ public class ClienteChatSwing extends JFrame {
     private void enviarMensaje() {
         String msg = campoMensaje.getText();
         if (msg.isEmpty()) return;
+
+        if (msg.equalsIgnoreCase("/clear")) {
+            areaChat.setText("");
+            campoMensaje.setText("");
+            return;
+        }
 
         if (msg.startsWith("/privado ")) {
             String[] partes = msg.split(" ", 3);

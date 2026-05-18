@@ -129,6 +129,15 @@ public class HiloServidorChat extends Thread {
 
         // --- COMANDOS PARA TODOS ---
 
+        // Ayuda
+        if (comando.equals("/help")) {
+            salida.println("> Sistema (Ayuda): Comandos básicos -> /privado [nick] [msg], /delmsg, /clear");
+            if (esMod) {
+                salida.println("> Sistema (Mod): /kick [nick], /suspend, /promote [nick] [segs], /delmsg [nick]");
+            }
+            return;
+        }
+
         // Mensajes Privados y Archivos
         if (comando.equals("/privado") || comando.equals("/file")) {
             if (partes.length < 3) return;
