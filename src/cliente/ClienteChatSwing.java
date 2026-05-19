@@ -82,7 +82,7 @@ public class ClienteChatSwing extends JFrame {
 
     private void construirInterfaz() {
         DefaultListModel<String> modeloSalas = new DefaultListModel<>();
-        String[] salas = {"#General", "#Anime"};
+        String[] salas = {"#General", "#Anime", "#Videojuegos", "#Programacion", "#Peliculas", "#Musica", "#Deportes"};
         for (String s : salas) modeloSalas.addElement(s);
 
         JList<String> listaSalas = new JList<>(modeloSalas);
@@ -105,11 +105,13 @@ public class ClienteChatSwing extends JFrame {
 
         campoMensaje = new JTextField();
         JButton btnEnviar = new JButton("Enviar");
-        JButton btnFile = new JButton("Archivo");
+        JButton btnFilePrivado = new JButton("Archivo Priv.");
+        JButton btnFilePublico = new JButton("Archivo Púb.");
         JButton btnSalir = new JButton("Salir");
 
         JPanel panelBotones = new JPanel(new FlowLayout(FlowLayout.RIGHT));
-        panelBotones.add(btnFile);
+        panelBotones.add(btnFilePublico);
+        panelBotones.add(btnFilePrivado);
         panelBotones.add(btnEnviar);
         panelBotones.add(btnSalir);
 
@@ -143,7 +145,8 @@ public class ClienteChatSwing extends JFrame {
 
         btnEnviar.addActionListener(e -> enviarMensaje());
         campoMensaje.addActionListener(e -> enviarMensaje());
-        btnFile.addActionListener(e -> enviarArchivoPrivado(listaUsuarios.getSelectedValue()));
+        btnFilePrivado.addActionListener(e -> enviarArchivoPrivado(listaUsuarios.getSelectedValue()));
+        btnFilePublico.addActionListener(e -> enviarArchivoPublico());
 
         btnSalir.addActionListener(e -> {
             if (salida != null) salida.println("*****");
@@ -305,6 +308,21 @@ public class ClienteChatSwing extends JFrame {
                 String archivoCifrado = GestorSeguridad.cifrarAES("[ARCHIVO: " + fc.getSelectedFile().getName() + "] Payload: " + base64.substring(0, Math.min(base64.length(), 20)) + "... (truncado)");
                 salida.println("/file " + destino + " " + archivoCifrado);
                 JOptionPane.showMessageDialog(this, "Archivo enviado cifrado a " + destino);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    private void enviarArchivoPublico() {
+        JFileChooser fc = new JFileChooser();
+        if (fc.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
+            try {
+                byte[] bytes = java.nio.file.Files.readAllBytes(fc.getSelectedFile().toPath());
+                String base64 = Base64.getEncoder().encodeToString(bytes);
+                // Usamos un comando especial /fileall para la pizarra común
+                salida.println("/fileall [ARCHIVO COMPARTIDO: " + fc.getSelectedFile().getName() + "] Peso: " + bytes.length + " bytes.");
+                JOptionPane.showMessageDialog(this, "Archivo compartido en la pizarra común.");
             } catch (IOException e) {
                 e.printStackTrace();
             }

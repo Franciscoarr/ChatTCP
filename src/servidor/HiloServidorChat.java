@@ -129,6 +129,14 @@ public class HiloServidorChat extends Thread {
 
         // --- COMANDOS PARA TODOS ---
 
+        if (comando.equals("/fileall")) {
+            String payloadInfo = texto.substring("/fileall ".length());
+            // Se envía a la sala con el formato normal "Nick> Mensaje"
+            // Así, el moderador podrá borrarlo usando el /delmsg
+            enviarMensajesASala(nombreCliente + "> ha compartido un archivo: " + payloadInfo);
+            return;
+        }
+
         // Ayuda
         if (comando.equals("/help")) {
             salida.println("> Sistema (Ayuda): Comandos básicos -> /privado [nick] [msg], /delmsg, /clear");
